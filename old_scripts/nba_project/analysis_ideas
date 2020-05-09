@@ -1,0 +1,19 @@
+
+EXPLORING DATA
+- evaluate crowd wisdom by looking at if a decrease or increase in opening to closing is correlated with outcome
+
+OUTCOMES 
+- Win or loss (classification)
+- Points (for betting the odds, betting the line, and the over under.
+- Line 
+- 1st, 2nd, 3rd, 4th quarter points
+
+FEATURES
+- using difference between opening and closing line to harness information from crowd wisdom.- look at 
+- previous game(s) stats, previous mkt performance. 
+
+SCRIPT
+- in a shiny appp - choose and outcome (tab, scroll down) and (1) look at that outcomes relationship with the features, (2) Look at how it did with each model - accuracy, how much money it would have won you by choosing a train and test window, (3) look at how much money it actually won you.
+
+
+

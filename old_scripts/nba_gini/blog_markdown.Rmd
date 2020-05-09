@@ -1,0 +1,174 @@
+---
+title: "NBA Inequality"
+author: "Ben Brew"
+date: "June 27, 2018"
+theme: "journal"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Measuring income inequality
+
+Anyone that has ever studied economcis knows that the sexiest and most popular economists study income inequality (Looking at you Pikety). Not only is it a "hot topic", but it's also the most pressing economic issue of our time. And though there are many ways to analyze and quantitavely categorize income distributions, none is more popular than the Lorenz curve, a method developed by the American economist Max Lorenz in 1905. 
+
+A typical Lorenz curve (below) plots for a given country, the cumulative share of people ordered from low to high incomes (x axis) against the cumulative share of income earned (y axis). This simple graph allows one to make statments like "the bottom 60% of households earn only 10% of the nation's income - without any tedious math we can observe that the further away the curved line is form the The 45 degree line ("the line of perfect equality"), the more unequal the society is. 
+
+But sometimes visualizations can confuse us more than need be. Luckily for us, a few years later, an Italian ecnomist by the name of Corrado Gini derived what is know now as the "Gini coefficient". This simple coefficient allows us to gauge the inequality of a country with one number alone, defined as the ratio of the area that lies between 45 degree line of equality and the Lorenz curve (marked A in the chart) divided by the whole area under the 45 degree line (marked A and B in the diagram). This gives us the Gini coefficient = A / (A + B). A Gini coefficient close to 1 implies that almost all of the income is owned by one individual (extreme inequality), whereas a coefficient close to 0 implies almost perfect equality. 
+
+## The economics of the NBA
+
+Lets be honest, studying actual income inequality is a bit boring and over done. The best way to learn boring (but important) tools is to apply those tools to an area of interest. After all, these tools are generalizable to any type of data, assuming we can use our imagination - we can measure inequality of any kind, not necessarily just income and we can easily access open source functions that do the calculations for us in R. 
+
+# The distribution of points per minute in 2018
+
+First, lets look at "performance inequality" based on the distribution of points per minute for each team. Team's that have many players performing well will have a lower Gini coefficient (points per minute are distributed equally), while the opposite is true for teams with only a few players capturing all the points per minute. So essentially in our example, "income" is a player's points per minute and our "contries" are represented by each team. 
+
+
+# The distribution of wins over time 
+
+```{r pressure, echo=TRUE}
+
+# load libraries 
+library(tidyverse)
+library(ggthemes)
+library(lubridate)
+library(reshape2)
+library(plotly)
+library(MASS)
+library(ineq)
+library(reldist)
+library(plotly)
+library(RColorBrewer)
+library(ggridges)
+library(viridis)
+
+# read in player stats
+dat_2018 <- read_csv('data/player_stat_2018_reg.csv')
+
+# recode the columns 
+names(dat_2018) <- tolower(names(dat_2018))
+names(dat_2018) <- gsub(' ', '_', names(dat_2018))
+names(dat_2018)[5] <- 'teams'
+names(dat_2018)[3] <- 'player'
+
+# convert to date object
+dat_2018$date <- as.Date(dat_2018$date, format = '%m/%d/%Y')
+
+# extract year
+dat_2018$year <- as.factor(format(dat_2018$date, format = '%Y'))
+
+# create a month variable 
+dat_2018$month <- month(as.POSIXlt(dat_2018$date))
+
+# remove playoffs to just get the regular season
+dat_2018 <- dat_2018[!grepl('Playoffs', dat_2018$data_set),]
+
+
+# group by each team and player to get mean minutes, points, and games played and filter out 
+# players that played less than 15 games
+temp_group_2018 <- dat_2018 %>%
+  group_by(teams, player) %>%
+  summarise(mean_min = mean(min, na.rm = T),
+            mean_points = mean(pts, na.rm = T),
+            games_played = n()) %>%
+  mutate(mean_pts_per_min = round((mean_points/mean_min), 2)) %>%
+  dplyr::filter(games_played > 15)
+
+# lets look at this new data
+head(temp_group_2018)
+
+# I created a function to loop through each team and to calculate the lorenz data as well as each teams gini coefficient based on points per minute within each team
+get_lonrenz_gini <- function(temp_data){
+  
+  # define a list to store loop results 
+  lorenz_list <- list()
+  
+  # define unique set of teams
+  nba_teams <- unique(temp_data$teams)
+  
+  # loop through each team 
+  for(i in 1:length(nba_teams)){
+    # grab team name
+    team_name <- nba_teams[i]
+    # subset by that team
+    sub_team <- temp_data[temp_data$teams == team_name,]
+    # get the lorenz curve data from the "Lc function"" from library ineq
+    temp_L <- Lc(sub_team$mean_pts_per_min)
+    # get the gini coefficient from the function "gini" in the reldist library
+    temp_g <- round(reldist::gini(sub_team$mean_pts_per_min), 3)
+    # combine into one dataset
+    l_data <- as.data.frame(cbind(temp_L$p, temp_L$L))
+    # rename columns
+    names(l_data) <- c('p', 'l')
+    # add in gini and team name to new data
+    l_data$gini <- temp_g
+    l_data$team_name <- unique(sub_team$teams)
+    lorenz_list[[i]] <- l_data
+    
+  }
+  
+  final_data <- do.call('rbind', lorenz_list)
+  
+  return(final_data)
+}
+
+# apply the function to get the new data
+l_2018 <- get_lonrenz_gini(temp_group_2018)
+
+# create vectors of team names assigned to their respective conference
+east_teams <- c('Atlanta', 'Boston', 'Brooklyn', 'Charlotte', 'Chicago', 'Cleveland', 'Detroit', 'Indiana', 'Miami', 'Milwaukee', 'New York', 'Orlando',
+                'Philadelphia', 'Toronto', 'Washington')
+west_teams <- c('Houston', 'Golden State', 'Dallas', 'Denver', 'LA Clippers', 'LA Lakers', 'Memphis', 'Minnesota', 'New Orleans', 'Oklahoma City', 
+                'Pheonix', 'Portland', 'Sacramento', 'San Antonio', 'Utah')
+
+# create variable in temp gini for east or west team 
+l_2018$conf <- ifelse(l_2018$team_name %in% east_teams, 'East', 'West')
+
+# round gini coefficient
+l_2018$gini <- round(l_2018$gini, 2)
+
+# split up into two data sets
+east_data <- l_2018 %>% group_by(team_name) %>% dplyr::filter(conf == 'East') %>% summarise(gini = unique(gini))
+west_data <- l_2018 %>% group_by(team_name) %>% dplyr::filter(conf == 'West') %>% summarise(gini = unique(gini))
+
+# use ggplot bar for east data
+ggplot(data = east_data,
+            aes(x = reorder(team_name, gini),
+                y = gini)) +
+  geom_bar(stat = 'identity', 
+           colour = 'black', 
+           fill = 'white',
+           alpha = 0.8) +
+  geom_text(aes(label = gini), hjust = 1.1) +
+  labs(x = '', y = ' ', title = 'Highest gini coefficients',
+       subtitle = 'Eastern conference') + 
+  coord_flip() + theme_solarized(base_size = 14, light = F)
+
+
+# use ggplot bar for east data
+ggplot(data = west_data,
+            aes(x = reorder(team_name, gini),
+                y = gini)) +
+  geom_bar(stat = 'identity', 
+           colour = 'black', 
+           fill = '#DC4220',
+           alpha = 0.8) +
+  geom_text(aes(label = gini), hjust = 1.1) +
+  labs(x = '', y = ' ', title = 'Highest gini coefficients',
+       subtitle = 'Western conference') + 
+  coord_flip() + theme_solarized(base_size = 14)
+
+
+
+```
+
+In 2018, OKC
+
+# The distribution of NBA team's salary cap
+
+# The distribution of NBA salaries over time
+
+
